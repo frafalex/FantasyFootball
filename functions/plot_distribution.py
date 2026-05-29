@@ -56,7 +56,6 @@ def plot_distribution(df: pd.DataFrame, target_column: str, category_column: str
                 axes[i].set_ylabel("")
                 
         plt.tight_layout()
-        plt.show()  # Displays the plot interactively, no file saving
         
     # CASE 2: Single Overall Plot (No categorization)
     else:

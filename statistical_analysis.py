@@ -9,6 +9,7 @@ This script performs statistical analysis on the imported player data.
 # PACKS
 import os   # For file handling
 import pandas as pd     # For data analysis
+import matplotlib.pyplot as plt     # For data visualization
 from dataclasses import dataclass   # For creating data structures
 from dataclasses import asdict      # For converting dataclass objects to dictionaries
 from functions.plot_distribution import plot_distribution as plot_dist  # For plotting data distribution
@@ -114,6 +115,15 @@ def position_analysis_classic(database: dict):
 
     # Distribution of games played per position
     plot_dist(df, 'games_played', 'position', 'Games Played Distribution by Position')
+
+    # Distribution of average marks per position
+    plot_dist(df, 'average_mark', 'position', 'Average Mark Distribution by Position', num_bins=21, max_x=10)
+
+    # Distribution of goals per position
+    plot_dist(df, 'goals', 'position', 'Goals Distribution by Position', num_bins=37, max_x=36)
+    
+    # Plot display
+    plt.show()
 
     return df
 
