@@ -7,9 +7,11 @@ This script performs statistical analysis on the imported player data.
 
 
 # PACKS
-import os   # for file handling
-import pandas as pd   # for data analysis
-from dataclasses import dataclass   # for creating data structures
+import os   # For file handling
+import pandas as pd     # For data analysis
+from dataclasses import dataclass   # For creating data structures
+from dataclasses import asdict      # For converting dataclass objects to dictionaries
+from functions.plot_distribution import plot_distribution as plot_dist  # For plotting data distribution
 
 
 # CLASSES
@@ -60,9 +62,9 @@ def importer_parser(file_path: str) -> list[player]:
     players = []
     for _, row in df.iterrows():
         player_obj = player(
+            name = str(row.get('Nome', '')).strip(),
             position = str(row.get('R', '')).strip(),
             position_mantra = str(row.get('Rm', '')).strip(),
-            name = str(row.get('Nome', '')).strip(),
             team = str(row.get('Squadra', '')).strip(),
             games_played = int(row.get('Pv', 0)),
             average_mark = float(row.get('Mv', 0.0)),
@@ -82,30 +84,64 @@ def importer_parser(file_path: str) -> list[player]:
 
     return players
 
+def position_analysis_classic(database: dict):
+    """
+    This function performs statistical analysis on the player data devided in groups according to their positions in classic mode.
+
+    Args:
+        database (dict): A dictionary containing player data.
+
+    Returns:
+        df: A pandas DataFrame containing the statistical data.
+    """
+    # Conversion of data into a pandas DataFrame
+    flat_data = []
+    for season, players in database.items():
+        for p in players:
+
+            # Convert dataset in a dictionary
+            player_dict = asdict(p)
+            player_dict['season'] = season
+            flat_data.append(player_dict)
+
+    # Create the DataFrame (this is like an excel table with columns: index, season, name, position, ...)
+    df = pd.DataFrame(flat_data)
+
+    # Number of players per position for each season and average
+    annual_counts = df.groupby(['season', 'position']).size().reset_index(name='count')
+    average_number = annual_counts.groupby('position')['count'].mean()
+    number_std = annual_counts.groupby('position')['count'].std()
+
+    # Distribution of games played per position
+    plot_dist(df, 'games_played', 'position', 'Games Played Distribution by Position')
+
+    return df
+
 
 # MAIN
-if __name__ == "__main__":
-    
-    # Folder where the data is stored
-    folder_name = "Data"
+# Folder where the data is stored
+folder_name = "Data"
 
-    # Dictionary to store multiple seasons
-    database = {}
+# Dictionary to store multiple seasons
+database = {}
 
-    # Check if the folder exists
-    if os.path.exists(folder_name):
+# Check if the folder exists
+if os.path.exists(folder_name):
 
-        # Loop through all the files in the folder
-        for name_file in os.listdir(folder_name):
+    # Loop through all the files in the folder
+    for name_file in os.listdir(folder_name):
 
-            # Check if the file is valid
-            if name_file.endswith('.csv'):
+        # Check if the file is valid
+        if name_file.endswith('.csv'):
 
-                file_path = os.path.join(folder_name, name_file)
-                season_name = name_file.replace('Statistiche_Fantacalcio_Stagione_', '').replace('.csv', '')
+            file_path = os.path.join(folder_name, name_file)
+            season_name = name_file.replace('Statistiche_Fantacalcio_Stagione_', '').replace('.csv', '')
 
-                # Import the data and store it in the database
-                database[season_name] = importer_parser(file_path)
+            # Import the data and store it in the database
+            database[season_name] = importer_parser(file_path)
 
-    else:
-        raise FileNotFoundError(f"The folder {folder_name} does not exist.")    # If the folder does not exist, raise an error
+else:
+    raise FileNotFoundError(f"The folder {folder_name} does not exist.")    # If the folder does not exist, raise an error
+
+# Perform the analysis
+df = position_analysis_classic(database)
