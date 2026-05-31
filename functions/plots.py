@@ -1,9 +1,14 @@
-import math             # For mathematical functions, specifically for calculating grid dimensions
-import pandas as pd     # For data manipulation
-import seaborn as sns   # For data visualization
+import math     # For mathematical functions, specifically for calculating grid dimensions
+import numpy as np  # For numerical operations, specifically for generating points for the Beta curve
+import pandas as pd         # For data manipulation
+import seaborn as sns       # For data visualization
+from scipy import stats     # For statistical functions, specifically for fitting the Beta distribution
 import matplotlib.pyplot as plt     # For data visualization
 
-def plot_distribution(df: pd.DataFrame, target_column: str, category_column: str = None, title: str = "Distribution Plot", num_bins: int = 39, max_x: int = 38) -> None:
+
+# Plot data distribution with optional categorization (e.g., by position)
+def plot_dist(df: pd.DataFrame, target_column: str, category_column: str = None, title: str = "Distribution Plot", num_bins: int = 39, max_x: int = 38) -> None:
+
     """
     Generates a histogram with a Kernel Density Estimate (KDE) curve.
 
@@ -47,7 +52,6 @@ def plot_distribution(df: pd.DataFrame, target_column: str, category_column: str
                 x=target_column,
                 bins=num_bins,
                 binrange=(0, max_x),
-                kde=True,
                 ax=axes[i],
                 color=sns.color_palette("husl", n_categories)[i]
             )
@@ -81,3 +85,48 @@ def plot_distribution(df: pd.DataFrame, target_column: str, category_column: str
         plt.ylabel("Number of Players")
         
         plt.tight_layout()
+
+
+# Model validation plot for Beta distribution fit on games played
+def beta_plt(df, dna_players, position):
+    """
+    Generates a plot to validate the Beta distribution fit for games played by players in a specific role.
+    Args:
+        df (pd.DataFrame): The DataFrame containing player data, including 'position' and 'games_played' columns;
+        dna_players (dict): A dictionary containing the fitted Alpha and Beta parameters for each role;
+        position (str): The specific role for which to validate the Beta fit (e.g., 'P', 'D', 'C', 'A').
+    """    
+    # Extract the real data for the specified position
+    games_played = df[df['position'] == position]['games_played']
+    alpha = dna_players[position]['alpha_gp']
+    beta = dna_players[position]['beta_gp']
+    
+    # Figure setup
+    plt.figure(figsize=(10, 6))
+    sns.set_theme(style="whitegrid")
+    
+    # Real histogram
+    sns.histplot(
+        games_played, 
+        bins=38, 
+        binrange=(1, 38), 
+        stat='density', 
+        color='lightsteelblue', 
+        label=f'Real Data (Position: {position})'
+    )
+    
+    # Beta curve generation
+    x = np.linspace(0, 38, 100)
+    y = stats.beta.pdf(x / 38.0, alpha, beta) / 38.0
+    
+    # Beta curve plotting
+    plt.plot(x, y, color='crimson', linewidth=3, label=f'Fit Beta (α={alpha:.2f}, β={beta:.2f})')
+    
+    # Plot formatting
+    plt.title(f"Validation Beta Fit for Games Played- {position}", fontsize=16, fontweight='bold')
+    plt.xlabel("Games Played")
+    plt.ylabel("Probability Density")
+    plt.legend()
+    
+    plt.tight_layout()
+

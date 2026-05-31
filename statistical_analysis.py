@@ -8,12 +8,14 @@ This script performs statistical analysis on the imported player data.
 
 # PACKS
 import os   # For file handling
+import numpy as np      # For numerical operations
 import pandas as pd     # For data analysis
-import matplotlib.pyplot as plt     # For data visualization
-from dataclasses import dataclass   # For creating data structures
-from dataclasses import asdict      # For converting dataclass objects to dictionaries
-from functions.plot_distribution import plot_distribution as plot_dist  # For plotting data distribution
-
+import scipy.stats as stats     # For statistical tests
+import matplotlib.pyplot as plt         # For data visualization
+from dataclasses import asdict          # For converting dataclass objects to dictionaries
+from dataclasses import dataclass       # For creating data structures
+from functions.plots import beta_plt    # For plotting Beta distribution fit validation
+from functions.plots import plot_dist   # For plotting data distribution
 
 # CLASSES
 @dataclass
@@ -132,7 +134,7 @@ def position_analysis_classic(database: dict, plots: bool):
     pen_takers_average = pen_takers_number.groupby('position')['count'].mean()
     pen_takers_std = pen_takers_number.groupby('position')['count'].std()
 
-    if plots:
+    if False:
 
         # Distribution of games played per position
         plot_dist(df, 'games_played', 'position', 'Games Played Distribution by Position')
@@ -159,12 +161,34 @@ def position_analysis_classic(database: dict, plots: bool):
         plot_dist(df_active, 'penalties_saved_per_game', 'position', 'Normalized Penalties Saved', num_bins=20, max_x=0.1)
 
         # Goals conceded per game (0-3.0, 30 bins means 0.1 per bin)
-        plot_dist(df_active, 'goals_conceded_per_game', 'position', 'Normalized Goals Conceded', num_bins=30, max_x=3.0)
+        plot_dist(df_active, 'goals_conceded_per_game', 'position', 'Normalized Goals Conceded', num_bins=30, max_x=3.5)
 
-        # Plot display
-        plt.show()
-
+    # Statistical analysis per position
+    dna_players = {}
+    positions = df['position'].unique()
     
+    for pos in positions:
+        dna_players[pos] = {}
+
+        # --- GAMES PLAYED ANALYSIS ---
+        games_played = df[df['position'] == pos]['games_played']
+
+        # Probability of zero games played
+        prob_zero_games = len(games_played[games_played == 0]) / len(games_played)
+        dna_players[pos]['prob_zero'] = prob_zero_games
+
+        # Beta fit on games played (only active players)
+        games_played_active = df_active[df_active['position'] == pos]['games_played']
+        games_normalized = games_played_active/38  # Normalization by the number of games in a season (38)
+        games_normalized = np.clip(games_normalized, 0.001, 0.999)  # Clip values to avoid having zeros and ones
+        alpha, beta, _, _ = stats.beta.fit(games_normalized, floc=0, fscale=1)
+
+        # Store the parameters in the dna_players dictionary
+        dna_players[pos]['alpha_gp'] = alpha
+        dna_players[pos]['beta_gp'] = beta
+
+        if plots:
+            beta_plt(df_active, dna_players, pos)
 
     return df
 
@@ -195,4 +219,9 @@ else:
     raise FileNotFoundError(f"The folder {folder_name} does not exist.")    # If the folder does not exist, raise an error
 
 # Perform the analysis
-df = position_analysis_classic(database, plots=True)
+plots = True
+df = position_analysis_classic(database, plots)
+
+# Plot display
+if plots:
+    plt.show()
