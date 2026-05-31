@@ -85,12 +85,13 @@ def importer_parser(file_path: str) -> list[player]:
 
     return players
 
-def position_analysis_classic(database: dict):
+def position_analysis_classic(database: dict, plots: bool):
     """
     This function performs statistical analysis on the player data devided in groups according to their positions in classic mode.
 
     Args:
-        database (dict): A dictionary containing player data.
+        database (dict): A dictionary containing player data
+        plots (bool): Whether to generate plots.
 
     Returns:
         df: A pandas DataFrame containing the statistical data.
@@ -113,17 +114,57 @@ def position_analysis_classic(database: dict):
     average_number = annual_counts.groupby('position')['count'].mean()
     number_std = annual_counts.groupby('position')['count'].std()
 
-    # Distribution of games played per position
-    plot_dist(df, 'games_played', 'position', 'Games Played Distribution by Position')
+    # DataFrame with only active players (those who played at least one game)
+    df_active = df[df['games_played'] > 0].copy()
 
-    # Distribution of average marks per position
-    plot_dist(df, 'average_mark', 'position', 'Average Mark Distribution by Position', num_bins=21, max_x=10)
+    # Statistics normalized by games played
+    df_active['goals_per_game'] = df_active['goals'] / df_active['games_played']
+    df_active['assists_per_game'] = df_active['assists'] / df_active['games_played']
+    df_active['yellows_per_game'] = df_active['yellow_cards'] / df_active['games_played']
+    df_active['reds_per_game'] = df_active['red_cards'] / df_active['games_played']
+    df_active['own_goals_per_game'] = df_active['own_goals'] / df_active['games_played']
+    df_active['goals_conceded_per_game'] = df_active['goals_conceded'] / df_active['games_played']
+    df_active['penalties_saved_per_game'] = df_active['penalties_saved'] / df_active['games_played']
 
-    # Distribution of goals per position
-    plot_dist(df, 'goals', 'position', 'Goals Distribution by Position', num_bins=37, max_x=36)
+    # Penalties statisics
+    pen_takers = df_active[df_active['penalties_taken'] > 0].copy()
+    pen_takers_number = pen_takers.groupby(['season', 'position']).size().reset_index(name='count')
+    pen_takers_average = pen_takers_number.groupby('position')['count'].mean()
+    pen_takers_std = pen_takers_number.groupby('position')['count'].std()
+
+    if plots:
+
+        # Distribution of games played per position
+        plot_dist(df, 'games_played', 'position', 'Games Played Distribution by Position')
+
+        # Mark distribution (0-10, 40 bins means 0.25 per bin)
+        plot_dist(df, 'average_mark', 'position', 'Average Mark Distribution by Position', num_bins=40, max_x=10)
+
+        # Goals per game (0-1, 20 bins means 0.05 per bin)
+        plot_dist(df_active, 'goals_per_game', 'position', 'Normalized Goals', num_bins=20, max_x=1.0)
+
+        # Assists per game (0-0.5, 20 bins means 0.025 per bin)
+        plot_dist(df_active, 'assists_per_game', 'position', 'Normalized Assists', num_bins=20, max_x=0.5)
+
+        # Yellow cards per game (0-0.5, 20 bins means 0.025 per bin)
+        plot_dist(df_active, 'yellows_per_game', 'position', 'Normalized Yellow Cards', num_bins=20, max_x=0.5)
+
+        # Red cards per game (0-0.1, 20 bins means 0.005 per bin)
+        plot_dist(df_active, 'reds_per_game', 'position', 'Normalized Red Cards', num_bins=20, max_x=0.1)
+
+        # Own goals per game (0-0.1, 20 bins means 0.005 per bin)
+        plot_dist(df_active, 'own_goals_per_game', 'position', 'Normalized Own Goals', num_bins=20, max_x=0.1)
+
+        # Penalties saved per game (0-0.1, 20 bins means 0.005 per bin)
+        plot_dist(df_active, 'penalties_saved_per_game', 'position', 'Normalized Penalties Saved', num_bins=20, max_x=0.1)
+
+        # Goals conceded per game (0-3.0, 30 bins means 0.1 per bin)
+        plot_dist(df_active, 'goals_conceded_per_game', 'position', 'Normalized Goals Conceded', num_bins=30, max_x=3.0)
+
+        # Plot display
+        plt.show()
+
     
-    # Plot display
-    plt.show()
 
     return df
 
@@ -154,4 +195,4 @@ else:
     raise FileNotFoundError(f"The folder {folder_name} does not exist.")    # If the folder does not exist, raise an error
 
 # Perform the analysis
-df = position_analysis_classic(database)
+df = position_analysis_classic(database, plots=True)

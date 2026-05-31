@@ -1,3 +1,5 @@
+import math             # For mathematical functions, specifically for calculating grid dimensions
+import pandas as pd     # For data manipulation
 import seaborn as sns   # For data visualization
 import matplotlib.pyplot as plt     # For data visualization
 
@@ -19,19 +21,23 @@ def plot_distribution(df: pd.DataFrame, target_column: str, category_column: str
     # Set a clean visual theme
     sns.set_theme(style="whitegrid")
     
-    # CASE 1: Categorized Plot (e.g., divided by Position)
+# CASE 1: Categorized Plot (e.g., divided by Position)
     if category_column:
         # Extract unique categories dynamically (e.g., 'P', 'D', 'C', 'A')
         categories = sorted(df[category_column].dropna().unique())
         n_categories = len(categories)
         
-        # Create subplots sharing the Y-axis for easy comparison
-        fig, axes = plt.subplots(1, n_categories, figsize=(5 * n_categories, 5), sharey=True)
+        # Calculate optimal grid dimensions (e.g., 2x2, 2x3)
+        n_cols = math.ceil(math.sqrt(n_categories))
+        n_rows = math.ceil(n_categories / n_cols)
+        
+        # Create subplots. sharey is False by default so each gets its own Y-axis.
+        # squeeze=False ensures 'axes' is always a 2D array, preventing iteration errors.
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 5 * n_rows), squeeze=False)
         fig.suptitle(title, fontsize=16, fontweight='bold')
         
-        # Handle the edge case where there is only one category
-        if n_categories == 1:
-            axes = [axes]
+        # Flatten the 2D array of axes for easy 1D iteration
+        axes = axes.flatten()
             
         for i, category in enumerate(categories):
             subset = df[df[category_column] == category]
@@ -49,14 +55,14 @@ def plot_distribution(df: pd.DataFrame, target_column: str, category_column: str
             # Format subplot titles and labels
             axes[i].set_title(f"{category_column.capitalize()}: {category}", fontsize=14)
             axes[i].set_xlabel(target_column.replace('_', ' ').title())
-            
-            if i == 0:
-                axes[i].set_ylabel("Number of Players")
-            else:
-                axes[i].set_ylabel("")
+            axes[i].set_ylabel("Number of Players") # Re-applied to all since Y-axis is independent
                 
+        # Hide any unused subplots if the grid is larger than the number of categories
+        for j in range(i + 1, len(axes)):
+            fig.delaxes(axes[j])
+            
         plt.tight_layout()
-        
+
     # CASE 2: Single Overall Plot (No categorization)
     else:
         plt.figure(figsize=(10, 6))
@@ -75,4 +81,3 @@ def plot_distribution(df: pd.DataFrame, target_column: str, category_column: str
         plt.ylabel("Number of Players")
         
         plt.tight_layout()
-        plt.show()
