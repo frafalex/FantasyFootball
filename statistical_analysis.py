@@ -14,7 +14,7 @@ import scipy.stats as stats     # For statistical tests
 import matplotlib.pyplot as plt         # For data visualization
 from dataclasses import asdict          # For converting dataclass objects to dictionaries
 from dataclasses import dataclass       # For creating data structures
-from functions.plots import beta_plt    # For plotting Beta distribution fit validation
+from functions.plots import kde_plt     # For plotting KDE fit validation
 from functions.plots import plot_dist   # For plotting data distribution
 
 # CLASSES
@@ -134,7 +134,7 @@ def position_analysis_classic(database: dict, plots: bool):
     pen_takers_average = pen_takers_number.groupby('position')['count'].mean()
     pen_takers_std = pen_takers_number.groupby('position')['count'].std()
 
-    if False:
+    if plots:
 
         # Distribution of games played per position
         plot_dist(df, 'games_played', 'position', 'Games Played Distribution by Position')
@@ -167,6 +167,9 @@ def position_analysis_classic(database: dict, plots: bool):
     dna_players = {}
     positions = df['position'].unique()
     
+    dna_players = {}
+    positions = df['position'].unique()
+    
     for pos in positions:
         dna_players[pos] = {}
 
@@ -177,18 +180,27 @@ def position_analysis_classic(database: dict, plots: bool):
         prob_zero_games = len(games_played[games_played == 0]) / len(games_played)
         dna_players[pos]['prob_zero'] = prob_zero_games
 
-        # Beta fit on games played (only active players)
+        # KDE fit on games played (only active players)
         games_played_active = df_active[df_active['position'] == pos]['games_played']
-        games_normalized = games_played_active/38  # Normalization by the number of games in a season (38)
-        games_normalized = np.clip(games_normalized, 0.001, 0.999)  # Clip values to avoid having zeros and ones
-        alpha, beta, _, _ = stats.beta.fit(games_normalized, floc=0, fscale=1)
 
-        # Store the parameters in the dna_players dictionary
-        dna_players[pos]['alpha_gp'] = alpha
-        dna_players[pos]['beta_gp'] = beta
+        # Mirroring technique to handle the boundary at zero for KDE fitting
+        mirrored_data = 2 - games_played_active
+        extended_data = np.concatenate([games_played_active, mirrored_data])
+        
+        # Role-specific bandwidth selection for KDE fitting
+        if pos == 'P':
+            bw = 0.08   # Sharper distribution for goalkeepers
+        else:
+            bw = 0.15   # Smoother distribution for outfield players
+
+        # Generate the KDE model (using 'scott' method by default for bandwidth)
+        kde_model = stats.gaussian_kde(extended_data, bw_method=bw)
+        
+        # Store the KDE model in the dna_players dictionary
+        dna_players[pos]['kde_gp'] = kde_model
 
         if plots:
-            beta_plt(df_active, dna_players, pos)
+            kde_plt(df_active, dna_players, pos)
 
     return df
 

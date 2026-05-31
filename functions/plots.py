@@ -87,25 +87,27 @@ def plot_dist(df: pd.DataFrame, target_column: str, category_column: str = None,
         plt.tight_layout()
 
 
-# Model validation plot for Beta distribution fit on games played
-def beta_plt(df, dna_players, position):
+# Model validation plot for KDE fit on games played
+def kde_plt(df: pd.DataFrame, dna_players: dict, position: str) -> None:
     """
-    Generates a plot to validate the Beta distribution fit for games played by players in a specific role.
+    Generates a plot to validate the KDE fit for games played by active players in a specific role.
+
     Args:
-        df (pd.DataFrame): The DataFrame containing player data, including 'position' and 'games_played' columns;
-        dna_players (dict): A dictionary containing the fitted Alpha and Beta parameters for each role;
-        position (str): The specific role for which to validate the Beta fit (e.g., 'P', 'D', 'C', 'A').
+        df (pd.DataFrame): The DataFrame containing active player data;
+        dna_players (dict): A dictionary containing the fitted KDE model for each role;
+        position (str): The specific role for which to validate the KDE fit (e.g., 'P', 'D', 'C', 'A').
     """    
     # Extract the real data for the specified position
     games_played = df[df['position'] == position]['games_played']
-    alpha = dna_players[position]['alpha_gp']
-    beta = dna_players[position]['beta_gp']
+    
+    # Retrieve the KDE model from the dictionary
+    kde_model = dna_players[position]['kde_gp']
     
     # Figure setup
     plt.figure(figsize=(10, 6))
     sns.set_theme(style="whitegrid")
     
-    # Real histogram
+    # Real histogram (38 bins, restricted from 1 to 38 to exclude zeros)
     sns.histplot(
         games_played, 
         bins=38, 
@@ -115,18 +117,19 @@ def beta_plt(df, dna_players, position):
         label=f'Real Data (Position: {position})'
     )
     
-    # Beta curve generation
-    x = np.linspace(0, 38, 100)
-    y = stats.beta.pdf(x / 38.0, alpha, beta) / 38.0
+    # KDE curve generation (evaluating points from 1 to 38)
+    x = np.linspace(1, 38, 200)
+    y = kde_model.evaluate(x) * 2   # Scaling factor to adjust for the mirroring technique used in fitting
     
-    # Beta curve plotting
-    plt.plot(x, y, color='crimson', linewidth=3, label=f'Fit Beta (α={alpha:.2f}, β={beta:.2f})')
+    # KDE curve plotting
+    plt.plot(x, y, color='crimson', linewidth=3, label='KDE Fit')
     
     # Plot formatting
-    plt.title(f"Validation Beta Fit for Games Played- {position}", fontsize=16, fontweight='bold')
+    plt.title(f"Validation KDE Fit for Games Played - {position}", fontsize=16, fontweight='bold')
     plt.xlabel("Games Played")
     plt.ylabel("Probability Density")
     plt.legend()
     
     plt.tight_layout()
+
 
