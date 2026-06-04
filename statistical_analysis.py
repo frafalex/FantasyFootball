@@ -14,8 +14,7 @@ import scipy.stats as stats     # For statistical tests
 import matplotlib.pyplot as plt         # For data visualization
 from dataclasses import asdict          # For converting dataclass objects to dictionaries
 from dataclasses import dataclass       # For creating data structures
-from functions.plots import kde_plt     # For plotting KDE fit validation
-from functions.plots import plot_dist   # For plotting data distribution
+from functions.plots import plot_dist, kde_plt, gauss_plt, gamma_plt    # For plotting data distribution
 
 # CLASSES
 @dataclass
@@ -136,15 +135,6 @@ def position_analysis_classic(database: dict, plots: bool):
 
     if plots:
 
-        # Distribution of games played per position
-        plot_dist(df, 'games_played', 'position', 'Games Played Distribution by Position')
-
-        # Mark distribution (0-10, 40 bins means 0.25 per bin)
-        plot_dist(df, 'average_mark', 'position', 'Average Mark Distribution by Position', num_bins=40, max_x=10)
-
-        # Goals per game (0-1, 20 bins means 0.05 per bin)
-        plot_dist(df_active, 'goals_per_game', 'position', 'Normalized Goals', num_bins=20, max_x=1.0)
-
         # Assists per game (0-0.5, 20 bins means 0.025 per bin)
         plot_dist(df_active, 'assists_per_game', 'position', 'Normalized Assists', num_bins=20, max_x=0.5)
 
@@ -193,14 +183,41 @@ def position_analysis_classic(database: dict, plots: bool):
         else:
             bw = 0.15   # Smoother distribution for outfield players
 
-        # Generate the KDE model (using 'scott' method by default for bandwidth)
-        kde_model = stats.gaussian_kde(extended_data, bw_method=bw)
-        
-        # Store the KDE model in the dna_players dictionary
-        dna_players[pos]['kde_gp'] = kde_model
+        # Generate and store the KDE model in the dna_players dictionary
+        dna_players[pos]['kde_gp'] = stats.gaussian_kde(extended_data, bw_method=bw)
 
-        if plots:
-            kde_plt(df_active, dna_players, pos)
+        # --- AVERAGE MARK ANALYSIS ---
+        avg_mark = df_active[df_active['position'] == pos]['average_mark']
+
+        # Standard Gaussian fit for average mark
+        dna_players[pos]['mean_mark'] = avg_mark.mean()
+        dna_players[pos]['std_mark'] = avg_mark.std()
+
+        # --- NORMALIZED GOALS ANALYSIS ---
+        goals_per_game = df_active[df_active['position'] == pos]['goals_per_game']
+        
+        # Calculate the probability of exactly zero goals
+        prob_zero_goals = len(goals_per_game[goals_per_game == 0]) / len(goals_per_game)
+        dna_players[pos]['prob_zero_goals'] = prob_zero_goals
+        
+        # Extract only strictly positive rates for the Gamma fit
+        positive_goals = goals_per_game[goals_per_game > 0]
+        
+        # Fit the Gamma distribution
+        if len(positive_goals) > 0:
+            shape, loc, scale = stats.gamma.fit(positive_goals, floc=0)
+        else:
+            # Fallback for positions with literally zero goals (e.g., some seasons for GKs)
+            shape, loc, scale = 0, 0, 0
+            
+        # Store parameters in the dictionary
+        dna_players[pos]['gamma_shape_goals_per_game'] = shape
+        dna_players[pos]['gamma_scale_goals_per_game'] = scale
+
+    if plots:
+        kde_plt(df_active, dna_players)
+        gauss_plt(df_active, dna_players)
+        gamma_plt(df_active, dna_players, 'goals_per_game', 'Gamma Fit for Normalized Goals')
 
     return df
 

@@ -88,47 +88,173 @@ def plot_dist(df: pd.DataFrame, target_column: str, category_column: str = None,
 
 
 # Model validation plot for KDE fit on games played
-def kde_plt(df: pd.DataFrame, dna_players: dict, position: str) -> None:
+def kde_plt(df: pd.DataFrame, dna_players: dict) -> None:
     """
-    Generates a plot to validate the KDE fit for games played by active players in a specific role.
+    Generates a 2x2 subplot grid to validate the KDE fit for games played by active players in all roles.
 
     Args:
         df (pd.DataFrame): The DataFrame containing active player data;
-        dna_players (dict): A dictionary containing the fitted KDE model for each role;
-        position (str): The specific role for which to validate the KDE fit (e.g., 'P', 'D', 'C', 'A').
+        dna_players (dict): A dictionary containing the fitted KDE model for each role.
     """    
-    # Extract the real data for the specified position
-    games_played = df[df['position'] == position]['games_played']
+    # Define the positions to loop through
+    positions = ['P', 'D', 'C', 'A']
     
-    # Retrieve the KDE model from the dictionary
-    kde_model = dna_players[position]['kde_gp']
-    
-    # Figure setup
-    plt.figure(figsize=(10, 6))
+    # Figure setup: 2 rows, 2 columns
+    fig, axes = plt.subplots(2, 2, figsize=(16, 10))
+    fig.suptitle("Validation KDE Fit for Games Played", fontsize=18, fontweight='bold')
     sns.set_theme(style="whitegrid")
     
-    # Real histogram (38 bins, restricted from 1 to 38 to exclude zeros)
-    sns.histplot(
-        games_played, 
-        bins=38, 
-        binrange=(1, 38), 
-        stat='density', 
-        color='lightsteelblue', 
-        label=f'Real Data (Position: {position})'
-    )
+    # Flatten the 2x2 matrix into a 1D list so we can iterate easily
+    axes = axes.flatten()
     
-    # KDE curve generation (evaluating points from 1 to 38)
-    x = np.linspace(1, 38, 200)
-    y = kde_model.evaluate(x) * 2   # Scaling factor to adjust for the mirroring technique used in fitting
+    for i, position in enumerate(positions):
+        ax = axes[i] # Select the specific subplot
+        
+        # Extract the real data for the specified position
+        games_played = df[df['position'] == position]['games_played']
+        
+        # Retrieve the KDE model from the dictionary
+        kde_model = dna_players[position]['kde_gp']
+        
+        # Real histogram (38 bins, restricted from 1 to 38 to exclude zeros)
+        sns.histplot(
+            games_played, 
+            bins=38, 
+            binrange=(1, 38), 
+            stat='density', 
+            color='lightsteelblue', 
+            label=f'Real Data ({position})',
+            ax=ax # Directs the plot to the current subplot
+        )
+        
+        # KDE curve generation (evaluating points from 1 to 38)
+        x = np.linspace(1, 38, 200)
+        y = kde_model.evaluate(x) * 2   # Scaling factor to adjust for the mirroring technique
+        
+        # KDE curve plotting
+        ax.plot(x, y, color='crimson', linewidth=3, label='KDE Fit')
+        
+        # Plot formatting for the individual subplot
+        ax.set_title(f"Position: {position}", fontsize=14)
+        ax.set_xlabel("Games Played")
+        ax.set_ylabel("Probability Density")
+        ax.legend()
     
-    # KDE curve plotting
-    plt.plot(x, y, color='crimson', linewidth=3, label='KDE Fit')
+    # Adjust layout to prevent overlapping text
+    plt.tight_layout()
+
+
+# Model validation plot for Gaussian fit on average mark
+def gauss_plt(df: pd.DataFrame, dna_players: dict) -> None:
+    """
+    Generates a 2x2 subplot grid to validate the Gaussian fit for average marks of active players.
+
+    Args:
+        df (pd.DataFrame): The DataFrame containing active player data;
+        dna_players (dict): A dictionary containing the fitted Gaussian parameters for each role.
+    """    
+    # Define the positions to loop through
+    positions = ['P', 'D', 'C', 'A']
     
-    # Plot formatting
-    plt.title(f"Validation KDE Fit for Games Played - {position}", fontsize=16, fontweight='bold')
-    plt.xlabel("Games Played")
-    plt.ylabel("Probability Density")
-    plt.legend()
+    # Figure setup: 2 rows, 2 columns
+    fig, axes = plt.subplots(2, 2, figsize=(16, 10))
+    fig.suptitle("Validation Gaussian Fit for Average Mark", fontsize=18, fontweight='bold')
+    sns.set_theme(style="whitegrid")
+    
+    # Flatten the 2x2 matrix into a 1D list so we can iterate easily
+    axes = axes.flatten()
+    
+    for i, position in enumerate(positions):
+        ax = axes[i] # Select the specific subplot
+        
+        # Extract the real data for the specified position
+        average_marks = df[df['position'] == position]['average_mark']
+        
+        # Retrieve the Gaussian parameters from the dictionary
+        mu = dna_players[position]['mean_mark']
+        sigma = dna_players[position]['std_mark']
+        
+        # Real histogram (letting seaborn decide the optimal bins for the bell shape)
+        sns.histplot(
+            average_marks, 
+            stat='density', 
+            color='mediumaquamarine', 
+            label=f'Real Data ({position})',
+            ax=ax
+        )
+        
+        # Gaussian curve generation
+        # We draw the curve spanning exactly 4 standard deviations left and right from the mean 
+        # to perfectly frame the bell shape without leaving empty spaces.
+        x = np.linspace(mu - 4 * sigma, mu + 4 * sigma, 100)
+        y = stats.norm.pdf(x, mu, sigma)
+        
+        # Curve plotting
+        ax.plot(x, y, color='crimson', linewidth=3, label=f'Gaussian Fit (μ={mu:.2f}, σ={sigma:.2f})')
+        
+        # Plot formatting for the individual subplot
+        ax.set_title(f"Position: {position}", fontsize=14)
+        ax.set_xlabel("Average Mark")
+        ax.set_ylabel("Probability Density")
+        ax.legend()
+    
+    # Adjust layout to prevent overlapping text
+    plt.tight_layout()
+
+
+# Model validation plot for Gamma fit on strictly positive rates
+def gamma_plt(df: pd.DataFrame, dna_players: dict, column_name: str, target_name: str) -> None:
+    """
+    Generates a 2x2 subplot grid to validate the Gamma fit for specific rates (e.g., goals, assists).
+    It filters out exact zeros to focus purely on the distribution of the positive rates.
+
+    Args:
+        df (pd.DataFrame): The DataFrame containing active player data;
+        dna_players (dict): A dictionary containing the fitted Gamma parameters;
+        column_name (str): The specific column to analyze (e.g., 'goals_per_game');
+        target_name (str): The clean name for the plots (e.g., 'Goals').
+    """    
+    positions = ['P', 'D', 'C', 'A']
+    
+    fig, axes = plt.subplots(2, 2, figsize=(16, 10))
+    fig.suptitle(f"Validation Gamma Fit for strictly positive {target_name}", fontsize=18, fontweight='bold')
+    sns.set_theme(style="whitegrid")
+    
+    axes = axes.flatten()
+    
+    for i, position in enumerate(positions):
+        ax = axes[i]
+        
+        # Filter for the specific position AND strictly positive values
+        positive_data = df[(df['position'] == position) & (df[column_name] > 0)][column_name]
+        
+        if len(positive_data) == 0:
+            ax.set_title(f"Position: {position} (No positive data)", fontsize=14)
+            continue
+            
+        shape = dna_players[position][f'gamma_shape_{column_name}']
+        scale = dna_players[position][f'gamma_scale_{column_name}']
+        
+        # Histogram of only the positive values
+        sns.histplot(
+            positive_data, 
+            stat='density', 
+            color='goldenrod', 
+            bins=20,
+            label=f'Real Data ({position} > 0)',
+            ax=ax
+        )
+        
+        # Gamma curve generation
+        x = np.linspace(0.001, positive_data.max(), 100)
+        y = stats.gamma.pdf(x, shape, loc=0, scale=scale)
+        
+        ax.plot(x, y, color='crimson', linewidth=3, label=f'Gamma Fit')
+        
+        ax.set_title(f"Position: {position}", fontsize=14)
+        ax.set_xlabel(f"{target_name} Per Game")
+        ax.set_ylabel("Probability Density")
+        ax.legend()
     
     plt.tight_layout()
 
