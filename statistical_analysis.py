@@ -7,6 +7,7 @@ This script performs statistical analysis on the imported player data.
 
 
 # PACKS
+from ast import For
 import os   # For file handling
 import numpy as np      # For numerical operations
 import pandas as pd     # For data analysis
@@ -14,7 +15,7 @@ import scipy.stats as stats     # For statistical tests
 import matplotlib.pyplot as plt         # For data visualization
 from dataclasses import asdict          # For converting dataclass objects to dictionaries
 from dataclasses import dataclass       # For creating data structures
-from functions.plots import plot_dist, kde_plt, gauss_plt, gamma_plt    # For plotting data distribution
+from functions.plots import kde_plt, gauss_plt, gamma_plt, beta_plt     # For plotting data distributions
 
 # CLASSES
 @dataclass
@@ -86,6 +87,34 @@ def importer_parser(file_path: str) -> list[player]:
 
     return players
 
+def fit_zero_inflated_gamma(data: pd.Series) -> tuple:
+    """
+    Calculates the probability of zero and fits a Gamma distribution to strictly positive values.
+
+    Args:
+        data (pd.Series): The data series to analyze (e.g., normalized goals, red cards).
+
+    Returns:
+        tuple: (probability of zero, gamma shape parameter, gamma scale parameter).
+    """
+    # Calculate the probability of exactly zero
+    if len(data) > 0:
+        prob_zero = len(data[data == 0]) / len(data)
+    else:
+        prob_zero = 1.0
+
+    # Extract only strictly positive rates for the Gamma fit
+    positive_data = data[data > 0]
+
+    # Fit the Gamma distribution
+    if len(positive_data) > 0:
+        shape, _, scale = stats.gamma.fit(positive_data, floc=0)
+    else:
+        # Fallback for positions with literally zero events
+        shape, scale = 0.0, 0.0
+
+    return prob_zero, shape, scale
+
 def position_analysis_classic(database: dict, plots: bool):
     """
     This function performs statistical analysis on the player data devided in groups according to their positions in classic mode.
@@ -95,7 +124,10 @@ def position_analysis_classic(database: dict, plots: bool):
         plots (bool): Whether to generate plots.
 
     Returns:
-        df: A pandas DataFrame containing the statistical data.
+        df: A pandas DataFrame containing the statistical data;
+        dna_players: A dictionary containing the parameters of the fitted distributions for each position;
+        average_number: A pandas Series containing the average number of players per position;
+        number_std: A pandas Series containing the standard deviation of the number of players per position.
     """
     # Conversion of data into a pandas DataFrame
     flat_data = []
@@ -127,32 +159,6 @@ def position_analysis_classic(database: dict, plots: bool):
     df_active['goals_conceded_per_game'] = df_active['goals_conceded'] / df_active['games_played']
     df_active['penalties_saved_per_game'] = df_active['penalties_saved'] / df_active['games_played']
 
-    # Penalties statisics
-    pen_takers = df_active[df_active['penalties_taken'] > 0].copy()
-    pen_takers_number = pen_takers.groupby(['season', 'position']).size().reset_index(name='count')
-    pen_takers_average = pen_takers_number.groupby('position')['count'].mean()
-    pen_takers_std = pen_takers_number.groupby('position')['count'].std()
-
-    if plots:
-
-        # Assists per game (0-0.5, 20 bins means 0.025 per bin)
-        plot_dist(df_active, 'assists_per_game', 'position', 'Normalized Assists', num_bins=20, max_x=0.5)
-
-        # Yellow cards per game (0-0.5, 20 bins means 0.025 per bin)
-        plot_dist(df_active, 'yellows_per_game', 'position', 'Normalized Yellow Cards', num_bins=20, max_x=0.5)
-
-        # Red cards per game (0-0.1, 20 bins means 0.005 per bin)
-        plot_dist(df_active, 'reds_per_game', 'position', 'Normalized Red Cards', num_bins=20, max_x=0.1)
-
-        # Own goals per game (0-0.1, 20 bins means 0.005 per bin)
-        plot_dist(df_active, 'own_goals_per_game', 'position', 'Normalized Own Goals', num_bins=20, max_x=0.1)
-
-        # Penalties saved per game (0-0.1, 20 bins means 0.005 per bin)
-        plot_dist(df_active, 'penalties_saved_per_game', 'position', 'Normalized Penalties Saved', num_bins=20, max_x=0.1)
-
-        # Goals conceded per game (0-3.0, 30 bins means 0.1 per bin)
-        plot_dist(df_active, 'goals_conceded_per_game', 'position', 'Normalized Goals Conceded', num_bins=30, max_x=3.5)
-
     # Statistical analysis per position
     dna_players = {}
     positions = df['position'].unique()
@@ -162,6 +168,7 @@ def position_analysis_classic(database: dict, plots: bool):
     
     for pos in positions:
         dna_players[pos] = {}
+
 
         # --- GAMES PLAYED ANALYSIS ---
         games_played = df[df['position'] == pos]['games_played']
@@ -186,6 +193,7 @@ def position_analysis_classic(database: dict, plots: bool):
         # Generate and store the KDE model in the dna_players dictionary
         dna_players[pos]['kde_gp'] = stats.gaussian_kde(extended_data, bw_method=bw)
 
+
         # --- AVERAGE MARK ANALYSIS ---
         avg_mark = df_active[df_active['position'] == pos]['average_mark']
 
@@ -193,33 +201,84 @@ def position_analysis_classic(database: dict, plots: bool):
         dna_players[pos]['mean_mark'] = avg_mark.mean()
         dna_players[pos]['std_mark'] = avg_mark.std()
 
-        # --- NORMALIZED GOALS ANALYSIS ---
-        goals_per_game = df_active[df_active['position'] == pos]['goals_per_game']
-        
-        # Calculate the probability of exactly zero goals
-        prob_zero_goals = len(goals_per_game[goals_per_game == 0]) / len(goals_per_game)
-        dna_players[pos]['prob_zero_goals'] = prob_zero_goals
-        
-        # Extract only strictly positive rates for the Gamma fit
-        positive_goals = goals_per_game[goals_per_game > 0]
-        
-        # Fit the Gamma distribution
-        if len(positive_goals) > 0:
-            shape, loc, scale = stats.gamma.fit(positive_goals, floc=0)
-        else:
-            # Fallback for positions with literally zero goals (e.g., some seasons for GKs)
-            shape, loc, scale = 0, 0, 0
-            
-        # Store parameters in the dictionary
-        dna_players[pos]['gamma_shape_goals_per_game'] = shape
-        dna_players[pos]['gamma_scale_goals_per_game'] = scale
 
+        # --- GAMMA FIT ANALYSIS FOR NORMALIZED METRICS ---
+        active_pos = df_active[df_active['position'] == pos]
+
+        # Define the normalized metrics to analyze and their corresponding dictionary suffixes.
+        gamma_metrics = {
+            'goals_per_game': 'goals',
+            'assists_per_game': 'assists',
+            'yellows_per_game': 'yellow_cards',
+            'reds_per_game': 'red_cards',
+            'own_goals_per_game': 'own_goals'
+        }
+
+        # Add Goalkeeper-specific metrics dynamically
+        if pos == 'P':
+            gamma_metrics['goals_conceded_per_game'] = 'goals_conceded'
+            gamma_metrics['penalties_saved_per_game'] = 'penalties_saved'
+
+        # Loop through each metric, extract parameters, and store them in the DNA dictionary
+        for col_name, suffix in gamma_metrics.items():
+            
+            # Call the custom function
+            prob_zero, shape, scale = fit_zero_inflated_gamma(active_pos[col_name])
+            
+            # Store the three parameters dynamically
+            dna_players[pos][f'prob_zero_{suffix}'] = prob_zero
+            dna_players[pos][f'gamma_shape_{suffix}'] = shape
+            dna_players[pos][f'gamma_scale_{suffix}'] = scale
+
+
+        # --- PENALTY TAKERS ANALYSIS ---
+        pen_takers = active_pos['penalties_taken'] > 0
+
+        # Probability of being a designated penalty taker
+        prob_is_penalty_taker = pen_takers.sum() / len(active_pos) if len(active_pos) > 0 else 0
+        dna_players[pos]['prob_is_penalty_taker'] = prob_is_penalty_taker
+        
+        # Extract only the players who actually took at least one penalty
+        actual_pen_takers = active_pos[pen_takers].copy()
+        
+        if len(actual_pen_takers) > 0:
+            # Frequency: How many penalties do they take per game?
+            pen_taken_per_game = actual_pen_takers['penalties_taken'] / actual_pen_takers['games_played']
+            shape_pen, _, scale_pen = stats.gamma.fit(pen_taken_per_game, floc=0)
+            
+            # Conversion Rate: How many do they score?
+            conversion_rate = actual_pen_takers['penalties_scored'] / actual_pen_takers['penalties_taken']
+
+            # We clip exact 0s and 1s to mathematically acceptable approximations (e.g., 0.9999).
+            conversion_rate_clipped = np.clip(conversion_rate, 0.0001, 0.9999)
+            
+            # Fit the Beta distribution using the clipped data
+            a_beta, b_beta, _, _ = stats.beta.fit(conversion_rate_clipped, floc=0, fscale=1)
+            
+        else:
+            # Fallback for positions with zero penalty takers
+            shape_pen, scale_pen = 0.0, 0.0
+            a_beta, b_beta = 1.0, 1.0  # Default uniform distribution parameters
+            
+        # Store parameters in the DNA dictionary
+        dna_players[pos]['gamma_shape_penalties_taken'] = shape_pen
+        dna_players[pos]['gamma_scale_penalties_taken'] = scale_pen
+        dna_players[pos]['beta_a_pen_conversion'] = a_beta
+        dna_players[pos]['beta_b_pen_conversion'] = b_beta
+        
     if plots:
         kde_plt(df_active, dna_players)
         gauss_plt(df_active, dna_players)
-        gamma_plt(df_active, dna_players, 'goals_per_game', 'Gamma Fit for Normalized Goals')
+        gamma_plt(df_active, dna_players, 'goals_per_game', 'goals')
+        gamma_plt(df_active, dna_players, 'assists_per_game', 'assists')
+        gamma_plt(df_active, dna_players, 'yellows_per_game', 'yellow_cards')
+        gamma_plt(df_active, dna_players, 'reds_per_game', 'red_cards')
+        gamma_plt(df_active, dna_players, 'own_goals_per_game', 'own_goals')
+        gamma_plt(df_active, dna_players, 'goals_conceded_per_game', 'goals_conceded')
+        gamma_plt(df_active, dna_players, 'penalties_saved_per_game', 'penalties_saved')
+        beta_plt(df_active, dna_players)
 
-    return df
+    return df, dna_players, average_number, number_std
 
 
 # MAIN

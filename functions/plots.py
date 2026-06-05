@@ -212,12 +212,15 @@ def gamma_plt(df: pd.DataFrame, dna_players: dict, column_name: str, target_name
         df (pd.DataFrame): The DataFrame containing active player data;
         dna_players (dict): A dictionary containing the fitted Gamma parameters;
         column_name (str): The specific column to analyze (e.g., 'goals_per_game');
-        target_name (str): The clean name for the plots (e.g., 'Goals').
+        target_name (str): The clean name for the plots and dict keys (e.g., 'own_goals').
     """    
     positions = ['P', 'D', 'C', 'A']
     
+    # Format the target_name for display (e.g., 'own_goals' -> 'Own Goals')
+    display_name = target_name.replace('_', ' ').title()
+    
     fig, axes = plt.subplots(2, 2, figsize=(16, 10))
-    fig.suptitle(f"Validation Gamma Fit for strictly positive {target_name}", fontsize=18, fontweight='bold')
+    fig.suptitle(f"Validation Gamma Fit for strictly positive {display_name}", fontsize=18, fontweight='bold')
     sns.set_theme(style="whitegrid")
     
     axes = axes.flatten()
@@ -225,6 +228,15 @@ def gamma_plt(df: pd.DataFrame, dna_players: dict, column_name: str, target_name
     for i, position in enumerate(positions):
         ax = axes[i]
         
+        # We keep using the original target_name for the dictionary keys
+        dict_key = target_name.lower()
+        shape_key = f'gamma_shape_{dict_key}'
+        
+        # SECURITY CHECK
+        if shape_key not in dna_players[position]:
+            ax.set_title(f"Position: {position} (Metric not applicable)", fontsize=14)
+            continue
+            
         # Filter for the specific position AND strictly positive values
         positive_data = df[(df['position'] == position) & (df[column_name] > 0)][column_name]
         
@@ -232,8 +244,8 @@ def gamma_plt(df: pd.DataFrame, dna_players: dict, column_name: str, target_name
             ax.set_title(f"Position: {position} (No positive data)", fontsize=14)
             continue
             
-        shape = dna_players[position][f'gamma_shape_{column_name}']
-        scale = dna_players[position][f'gamma_scale_{column_name}']
+        shape = dna_players[position][shape_key]
+        scale = dna_players[position][f'gamma_scale_{dict_key}']
         
         # Histogram of only the positive values
         sns.histplot(
@@ -251,9 +263,82 @@ def gamma_plt(df: pd.DataFrame, dna_players: dict, column_name: str, target_name
         
         ax.plot(x, y, color='crimson', linewidth=3, label=f'Gamma Fit')
         
+        # Plot formatting for the individual subplot
         ax.set_title(f"Position: {position}", fontsize=14)
-        ax.set_xlabel(f"{target_name} Per Game")
+        
+        # Use the formatted display_name for the X-axis label
+        ax.set_xlabel(f"{display_name} Per Game")
+        
         ax.set_ylabel("Probability Density")
+        ax.legend()
+    
+    plt.tight_layout()
+
+
+# Model validation plot for Beta fit on penalty conversion rates
+def beta_plt(df: pd.DataFrame, dna_players: dict) -> None:
+    """
+    Generates a 2x2 subplot grid to validate the Beta fit for penalty conversion rates.
+    It only considers players who have taken at least one penalty.
+
+    Args:
+        df (pd.DataFrame): The DataFrame containing active player data;
+        dna_players (dict): A dictionary containing the fitted Beta parameters.
+    """    
+    positions = ['P', 'D', 'C', 'A']
+    
+    fig, axes = plt.subplots(2, 2, figsize=(16, 10))
+    fig.suptitle("Validation Beta Fit for Penalty Conversion Rate", fontsize=18, fontweight='bold')
+    sns.set_theme(style="whitegrid")
+    
+    axes = axes.flatten()
+    
+    for i, position in enumerate(positions):
+        ax = axes[i]
+        
+        # Ensure the Beta parameters exist for this position
+        if 'beta_a_pen_conversion' not in dna_players[position]:
+            ax.set_title(f"Position: {position} (Metric not applicable)", fontsize=14)
+            continue
+            
+        # Filter for actual penalty takers in this position
+        pen_takers = df[(df['position'] == position) & (df['penalties_taken'] > 0)]
+        
+        if len(pen_takers) == 0:
+            ax.set_title(f"Position: {position} (No penalty takers)", fontsize=14)
+            continue
+            
+        # Calculate real conversion rates
+        conversion_rates = pen_takers['penalties_scored'] / pen_takers['penalties_taken']
+        
+        # Retrieve Beta parameters
+        a = dna_players[position]['beta_a_pen_conversion']
+        b = dna_players[position]['beta_b_pen_conversion']
+        
+        # Histogram of real conversion rates (Bins from 0.0 to 1.0)
+        sns.histplot(
+            conversion_rates, 
+            stat='density', 
+            color='mediumorchid', 
+            bins=10,
+            binrange=(0, 1),
+            label=f'Real Data ({position})',
+            ax=ax
+        )
+        
+        # Beta curve generation (X goes from 0 to 1)
+        x = np.linspace(0.001, 0.999, 100)
+        y = stats.beta.pdf(x, a, b)
+        
+        ax.plot(x, y, color='crimson', linewidth=3, label=f'Beta Fit')
+        
+        # Plot formatting
+        ax.set_title(f"Position: {position}", fontsize=14)
+        ax.set_xlabel("Conversion Rate (0.0 to 1.0)")
+        ax.set_ylabel("Probability Density")
+        
+        # Set X limits strictly between 0 and 1 (0% to 100%)
+        ax.set_xlim(-0.05, 1.05)
         ax.legend()
     
     plt.tight_layout()
